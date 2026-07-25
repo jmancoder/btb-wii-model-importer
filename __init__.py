@@ -10,15 +10,15 @@ bl_info = {
 
 
 import bpy
-
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator, Context
+
 from .h3m_reader import H3MReader
 
 
 class H3MImporter(Operator, ImportHelper):
-    """Load a Bob the Builder Wii H3M model."""
+    """Load an H3M model from Bob the Builder Wii."""
     bl_idname = "import_scene.btb_h3m_model"
     bl_label = "Import H3M"
 
@@ -49,7 +49,7 @@ class H3MImporter(Operator, ImportHelper):
 def menu_func_import(self, context):
     self.layout.operator(
         H3MImporter.bl_idname,
-        text="H3M Mesh (.H3M)"
+        text="H3M Model (.H3M)"
     )
 
 
