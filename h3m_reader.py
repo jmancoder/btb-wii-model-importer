@@ -202,7 +202,7 @@ class H3MReader(BinaryReader):
 
         return text
 
-    def load_h3m(self, z_data: bytes) -> None:
+    def load_h3m(self, z_data: bytes, name: str) -> None:
         # Decompress as LZ11 data when signature is present
         if z_data[:4].decode("ascii", errors="ignore") == "H3DZ":
             data = decompress_bytes(z_data[4:])
@@ -213,9 +213,11 @@ class H3MReader(BinaryReader):
 
         # Read header
         version = self.read_uint16()
+        if version != 200:
+            print(f"Warning: File version {version} has not been tested.")
         material_count = self.read_uint16()
         object_count = self.read_uint16()
-        self.read_uint16()
+        anim_count = self.read_uint16()
         self.read_float()
         self.read_float()
 
@@ -237,7 +239,8 @@ class H3MReader(BinaryReader):
                     self.read_uint16()
                     tex_size = self.read_uint16()
                     self.bs.seek(tex_size, 1)
-                self.read_uint32()
+                self.read_uint16()
+            self.read_uint16()
 
         # Read objects
         for _ in range(object_count):

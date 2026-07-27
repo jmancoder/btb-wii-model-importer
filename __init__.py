@@ -9,6 +9,8 @@ bl_info = {
 }
 
 
+from pathlib import Path
+
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import FloatProperty, StringProperty
@@ -37,10 +39,10 @@ class H3MImporter(Operator, ImportHelper):
     )
 
     def execute(self, context: Context):
-        with open(self.filepath, "rb") as f:
+        in_path = Path(self.filepath)
+        with open(in_path, "rb") as f:
             reader = H3MReader(self.min_bone_length)
-            reader.load_h3m(f.read())
-
+            reader.load_h3m(f.read(), in_path.stem)
         reader.import_h3m(context)
 
         return {'FINISHED'}
