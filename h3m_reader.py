@@ -238,7 +238,7 @@ class H3MReader(BinaryReader):
                     # Skip internal texture
                     tex_size = self.read_uint32()
                     self.bs.seek(tex_size, 1)
-                    self.read_uint16()
+                self.read_uint16()
 
             self.read_uint16()
 
@@ -269,7 +269,7 @@ class H3MReader(BinaryReader):
                 case _:
                     raise ValueError(f"Unknown object type: {obj_type}")
 
-        # Print object info
+        # Print basic properties of each object
         for obj in self.objects:
             print(obj.name, type(obj).__name__, obj.flags_0, obj.flags_1)
         print()
@@ -312,15 +312,27 @@ class H3MReader(BinaryReader):
                 # Import flipped UVs
                 uv_layer = mesh.uv_layers.new(name=f"UV0")
                 for i, uv_idx in enumerate(obj.uv_indices):
+                    if uv_idx > len(obj.uvs):
+                        print(f"Warning: UV index {i} exceeded buffer length")
+                        break
                     uv = obj.uvs[uv_idx]
                     uv_layer.data[i].uv = (uv[0], 1.0 - uv[1])
 
                 # Import normals
-                loop_normals: list[tuple[float, float, float]] = []
-                for normal_idx in obj.normal_indices:
-                    x, y, z = obj.normals[normal_idx]
-                    loop_normals.append((-x, -y, -z))
-                mesh.normals_split_custom_set(loop_normals)
+                # This causes an exception access violation on skinned meshes
+                if not is_skinned:
+                    loop_normals: list[tuple[float, float, float]] = []
+                    for i, normal_idx in enumerate(obj.normal_indices):
+                        if normal_idx > len(obj.normals):
+                            print(f"Warning: Normal index {i} exceeded buffer length")
+                            break
+                        x, y, z = obj.normals[normal_idx]
+                        loop_normals.append((-x, -y, -z))
+                    else:
+                        if len(loop_normals) == len(mesh.loops):
+                            mesh.normals_split_custom_set(loop_normals)
+                        else:
+                            print("Warning: Normal count does not match loop count")
 
                 mesh.validate()
                 mesh.update()
