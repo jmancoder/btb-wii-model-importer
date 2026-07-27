@@ -236,10 +236,10 @@ class H3MReader(BinaryReader):
                 tex_name = self.read_text()
                 if not tex_name:
                     # Skip internal texture
-                    self.read_uint16()
-                    tex_size = self.read_uint16()
+                    tex_size = self.read_uint32()
                     self.bs.seek(tex_size, 1)
-                self.read_uint16()
+                    self.read_uint16()
+
             self.read_uint16()
 
         # Read objects
