@@ -26,6 +26,9 @@ class BinaryReader:
     def read_int32(self) -> int:
         return int.from_bytes(self.bs.read(4), signed=True)
 
+    def read_float(self) -> float:
+        return struct.unpack(">f", self.bs.read(4))[0]
+
     def read_vec2f(self) -> tuple[float, float]:
         return struct.unpack(f">2f", self.bs.read(8))
 
