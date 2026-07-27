@@ -283,7 +283,10 @@ class H3MReader(BinaryReader):
 
         for obj in self.objects:
             if type(obj) is H3MDummyObject:
-                pass
+                # Create empty object
+                dummy_obj = bpy.data.objects.new(obj.name, None)
+                dummy_obj.empty_display_size = 0.1
+                context.collection.objects.link(dummy_obj)
 
             elif type(obj) is H3MBoneObject:
                 bone_objects.append(obj)
