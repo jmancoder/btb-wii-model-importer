@@ -2,13 +2,12 @@ from __future__ import annotations
 import bpy
 from io import BytesIO
 import math
-import struct
 
 from bpy.types import Context
 from mathutils import Quaternion, Matrix
 
-from .binary_reader import BinaryReader
 from .lzss3 import decompress_bytes
+from .binary_reader import BinaryReader
 
 
 class H3MObject:
