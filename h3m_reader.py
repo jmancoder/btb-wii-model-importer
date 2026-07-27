@@ -209,12 +209,16 @@ class H3MReader(BinaryReader):
         else:
             data = z_data
         self.data_size = len(data)
+        if self.data_size == 0:
+            raise ValueError(
+                f"Decompressed data is empty")
         self.bs = BytesIO(data)
 
         # Read header
         version = self.read_uint16()
         if version != 200:
-            print(f"Warning: File version {version} has not been tested.")
+            raise ValueError(
+                f"Unknown file version {version}")
         material_count = self.read_uint16()
         object_count = self.read_uint16()
         anim_count = self.read_uint16()
@@ -345,6 +349,11 @@ class H3MReader(BinaryReader):
                     mesh_obj.parent = armature_obj
                     modifier = mesh_obj.modifiers.new("Armature", 'ARMATURE')
                     modifier.object = armature_obj
+
+                    # Correct armature scale and rotation
                     armature_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+                    armature_obj.scale = (0.01, 0.01, 0.01)
                 else:
+                    # Correct mesh scale and rotation
                     mesh_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
+                    mesh_obj.scale = (0.01, 0.01, 0.01)
