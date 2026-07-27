@@ -295,8 +295,8 @@ class H3MReader(BinaryReader):
                 is_skinned = type(obj) is H3MSkinMeshObject
                 if is_skinned:
                     # Create armature
-                    armature = bpy.data.armatures.new("Armature")
-                    armature_obj = bpy.data.objects.new("Armature", armature)
+                    armature = bpy.data.armatures.new(obj.name)
+                    armature_obj = bpy.data.objects.new(obj.name, armature)
                     context.collection.objects.link(armature_obj)
 
                     # Create bones
@@ -313,7 +313,7 @@ class H3MReader(BinaryReader):
                     bpy.ops.object.mode_set(mode="OBJECT")
 
                 # Create mesh
-                mesh = bpy.data.meshes.new("Mesh")
+                mesh = bpy.data.meshes.new(obj.name)
                 mesh.from_pydata(obj.positions, [], obj.triangles)
 
                 # Import flipped UVs
@@ -344,7 +344,7 @@ class H3MReader(BinaryReader):
                 mesh.validate()
                 mesh.update()
 
-                mesh_obj = bpy.data.objects.new("Mesh", mesh)
+                mesh_obj = bpy.data.objects.new(obj.name, mesh)
                 context.collection.objects.link(mesh_obj)
 
                 if is_skinned:
