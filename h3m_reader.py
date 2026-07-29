@@ -10,6 +10,54 @@ from .lzss3 import decompress_bytes
 from .binary_reader import BinaryReader
 
 
+class H3MPrimitiveGroup:
+    def __init__(self, prim_type: int, prim_count: int,
+                 prim_flags: int) -> None:
+        self.prim_type = prim_type
+        self.prim_count = prim_count
+        self.prim_flags = prim_flags
+        
+        self.position_indices: list[int] = []
+        self.normal_indices: list[int] = []
+        self.color_indices: list[int] = []
+        self.indices_3: list[int] = []
+        self.uv_indices: list[int] = []
+        self.indices_5: list[int] = []
+        self.indices_6: list[int] = []
+        self.indices_7: list[int] = []
+        self.indices_8: list[int] = []
+        self.indices_9: list[int] = []
+        self.indices_10: list[int] = []
+        self.indices_11: list[int] = []
+
+    def load_data(self, reader: H3MReader) -> None:
+        for _ in range(self.prim_count):
+            if self.prim_flags & 1:
+                self.position_indices.append(reader.read_uint16())
+            if self.prim_flags & 2:
+                self.normal_indices.append(reader.read_uint16())
+            if self.prim_flags & 4:
+                self.color_indices.append(reader.read_uint16())
+            if self.prim_flags & 8:
+                self.indices_3.append(reader.read_uint16())
+            if self.prim_flags & 16:
+                self.uv_indices.append(reader.read_uint16())
+            if self.prim_flags & 32:
+                self.indices_5.append(reader.read_uint16())
+            if self.prim_flags & 64:
+                self.indices_6.append(reader.read_uint16())
+            if self.prim_flags & 128:
+                self.indices_7.append(reader.read_uint16())
+            if self.prim_flags & 256:
+                self.indices_8.append(reader.read_uint16())
+            if self.prim_flags & 512:
+                self.indices_9.append(reader.read_uint16())
+            if self.prim_flags & 1024:
+                self.indices_10.append(reader.read_uint16())
+            if self.prim_flags & 2048:
+                self.indices_11.append(reader.read_uint16())
+
+
 class H3MObject:
     def __init__(self) -> None:
         self.name: str
@@ -62,19 +110,8 @@ class H3MMeshObject(H3MObject):
         self.attrs_10: list[tuple[float, float]] = []
         self.attrs_11: list[tuple[float, float]] = []
 
-        self.position_indices: list[int] = []
-        self.normal_indices: list[int] = []
-        self.color_indices: list[int] = []
-        self.indices_3: list[int] = []
-        self.uv_indices: list[int] = []
-        self.indices_5: list[int] = []
-        self.indices_6: list[int] = []
-        self.indices_7: list[int] = []
-        self.indices_8: list[int] = []
-        self.indices_9: list[int] = []
-        self.indices_10: list[int] = []
-        self.indices_11: list[int] = []
-
+        self.main_prim_group: H3MPrimitiveGroup
+        self.prim_groups: list[H3MPrimitiveGroup] = []
         self.triangles: list[tuple[int, int, int]] = []
 
     def load_data(self, reader: H3MReader):
@@ -130,51 +167,40 @@ class H3MMeshObject(H3MObject):
             for _ in range(reader.read_uint16())
         ]
 
-        # Read primitives
+        # Read nodes and primitive groups
         node_count = reader.read_uint16()
-        unk_0 = reader.read_uint16()
-        prim_group_count = reader.read_uint16()
-        print(node_count, unk_0, prim_group_count)
+        for _ in range(node_count):
+            node_id = reader.read_uint16()
+            prim_group_count = reader.read_uint16()
+            for _ in range(prim_group_count):
+                prim_type = reader.read_uint16()
+                prim_count = reader.read_uint32()
+                prim_flags = reader.read_uint32()
+                prim_group = H3MPrimitiveGroup(prim_type,
+                                               prim_count, prim_flags)
+                prim_group.load_data(reader)
+                self.prim_groups.append(prim_group)
 
-        prim_type = reader.read_uint16()
-        prim_count = reader.read_uint32()
-        prim_flags = reader.read_uint32()
-        print(prim_type, prim_count, prim_flags)
+        reader.read_uint16()
+        reader.read_uint16()
+        unk_count = reader.read_int16()
+        tail_prim_count = reader.read_uint16()
 
-        # vert_attr_count = 0
-        # for i in range(12):
-        #     if prim_flags & (1 << i):
-        #         vert_attr_count += 1
-
-        for _ in range(prim_count):
-            if prim_flags & 1:
-                self.position_indices.append(reader.read_uint16())
-            if prim_flags & 2:
-                self.normal_indices.append(reader.read_uint16())
-            if prim_flags & 4:
-                self.color_indices.append(reader.read_uint16())
-            if prim_flags & 8:
-                self.indices_3.append(reader.read_uint16())
-            if prim_flags & 16:
-                self.uv_indices.append(reader.read_uint16())
-            if prim_flags & 32:
-                self.indices_5.append(reader.read_uint16())
-            if prim_flags & 64:
-                self.indices_6.append(reader.read_uint16())
-            if prim_flags & 128:
-                self.indices_7.append(reader.read_uint16())
-            if prim_flags & 256:
-                self.indices_8.append(reader.read_uint16())
-            if prim_flags & 512:
-                self.indices_9.append(reader.read_uint16())
-            if prim_flags & 1024:
-                self.indices_10.append(reader.read_uint16())
-            if prim_flags & 2048:
-                self.indices_11.append(reader.read_uint16())
+        self.main_prim_group = self.prim_groups[-1]
+        if unk_count > -1:
+            print("Tail prims start:", hex(reader.bs.tell()))
+            tail_prim_group = H3MPrimitiveGroup(
+                self.main_prim_group.prim_type,
+                tail_prim_count,
+                self.main_prim_group.prim_flags
+            )
+            tail_prim_group.load_data(reader)
+            self.prim_groups.append(tail_prim_group)
+            self.main_prim_group = tail_prim_group
 
         # Group position indices into triangles
-        for i in range(0, len(self.position_indices), 3):
-            a, b, c = self.position_indices[i:i+3]
+        for i in range(0, len(self.main_prim_group.position_indices), 3):
+            a, b, c = self.main_prim_group.position_indices[i:i+3]
             self.triangles.append((a, b, c))
 
 
@@ -254,8 +280,6 @@ class H3MReader(BinaryReader):
                     obj = H3MMeshObject()
                     obj.load_data(self)
                     self.objects.append(obj)
-                    # Remove tihis break when Mesh objects are fully parsed
-                    break
                 case 2:
                     obj = H3MSkinMeshObject()
                     obj.load_data(self)
@@ -272,11 +296,6 @@ class H3MReader(BinaryReader):
                     self.objects.append(obj)
                 case _:
                     raise ValueError(f"Unknown object type: {obj_type}")
-
-        # Print basic properties of each object
-        for obj in self.objects:
-            print(obj.name, type(obj).__name__, obj.flags_0, obj.flags_1)
-        print()
 
     def import_h3m(self, context: Context) -> None:
         bone_objects: list[H3MBoneObject] = []
@@ -316,20 +335,20 @@ class H3MReader(BinaryReader):
                 mesh = bpy.data.meshes.new(obj.name)
                 mesh.from_pydata(obj.positions, [], obj.triangles)
 
-                # Import flipped UVs
-                uv_layer = mesh.uv_layers.new(name=f"UV0")
-                for i, uv_idx in enumerate(obj.uv_indices):
-                    if uv_idx > len(obj.uvs):
-                        print(f"Warning: UV index {i} exceeded buffer length")
-                        break
-                    uv = obj.uvs[uv_idx]
-                    uv_layer.data[i].uv = (uv[0], 1.0 - uv[1])
-
-                # Import normals
-                # This causes an exception access violation on skinned meshes
+                # Skinned mesh normal and UV indices are still not imported correctly
                 if not is_skinned:
+                    # Import flipped UVs
+                    uv_layer = mesh.uv_layers.new(name=f"UV0")
+                    for i, uv_idx in enumerate(obj.main_prim_group.uv_indices):
+                        if uv_idx > len(obj.uvs):
+                            print(f"Warning: UV index {i} exceeded buffer length")
+                            break
+                        uv = obj.uvs[uv_idx]
+                        uv_layer.data[i].uv = (uv[0], 1.0 - uv[1])
+
+                    # Import normals
                     loop_normals: list[tuple[float, float, float]] = []
-                    for i, normal_idx in enumerate(obj.normal_indices):
+                    for i, normal_idx in enumerate(obj.main_prim_group.normal_indices):
                         if normal_idx > len(obj.normals):
                             print(f"Warning: Normal index {i} exceeded buffer length")
                             break
