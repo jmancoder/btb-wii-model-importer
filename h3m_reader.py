@@ -15,7 +15,7 @@ class H3MPrimitiveGroup:
         self.prim_type = prim_type
         self.prim_count = prim_count
         self.prim_flags = prim_flags
-        
+
         self.position_indices: list[int] = []
         self.normal_indices: list[int] = []
         self.color_indices: list[int] = []
@@ -69,6 +69,7 @@ class H3MBone:
             reader.read_quaternion(),
             reader.read_vec3f()
         )
+
 
 class H3MObject:
     def __init__(self) -> None:
@@ -229,24 +230,25 @@ class H3MSkinMeshObject(H3MMeshObject):
             reader.read_vec3f()
         )
 
+        pids = []
         bone_count = reader.read_uint16()
         for _ in range(bone_count):
             bone = H3MBone()
             bone.load_data(reader)
             self.bones.append(bone)
+            pids.append(bone.parent_id)
+        print("Min-max:", min(pids), max(pids))
 
         skin_attr_count = reader.read_uint16()
-        unks_0 = []
         for _ in range(skin_attr_count):
-            unks_0.append(reader.read_int16())
+            reader.read_int16()
             self.bone_weights.append(reader.read_float())
             self.bone_indices.append(reader.read_int32())
-        print("Min, max:", min(unks_0), max(unks_0))
+
 
 class H3MReader(BinaryReader):
-    def __init__(self, unit_scale: float, min_node_length: float) -> None:
-        self.unit_scale = unit_scale
-        self.min_node_length = min_node_length
+    def __init__(self, default_bone_len: float) -> None:
+        self.default_bone_len = default_bone_len
         self.objects: list[H3MObject] = []
         self.parent_ids: list[int] = []
 
@@ -328,9 +330,10 @@ class H3MReader(BinaryReader):
                     raise ValueError(f"Unknown object type: {obj_type}")
 
         # Store object parent IDs
-        self.parent_ids = [self.read_int16() for _ in range(object_count)]
+        self.object_parent_ids = [self.read_int16() for _ in range(object_count)]
 
     def import_h3m(self, context: Context) -> None:
+        blender_objects: list[Object] = []
         for obj in self.objects:
             if isinstance(obj, H3MMeshObject):
                 is_skinned = type(obj) is H3MSkinMeshObject
@@ -338,24 +341,24 @@ class H3MReader(BinaryReader):
                     # Create armature
                     armature = bpy.data.armatures.new(obj.name)
                     armature_obj = bpy.data.objects.new(obj.name, armature)
-                    armature_obj.matrix_world = obj.skin_transform * self.unit_scale
+                    armature_obj.matrix_world = obj.skin_transform
                     context.collection.objects.link(armature_obj)
+                    blender_objects.append(armature_obj)
 
                     # Create bones
                     context.view_layer.objects.active = armature_obj
                     bpy.ops.object.mode_set(mode="EDIT")
+
                     for i, bone_info in enumerate(obj.bones):
                         bone = armature.edit_bones.new(str(i))
-                        bone.tail = (
-                            0.0,
-                            self.min_node_length / self.unit_scale,
-                            0.0
-                        )
+                        bone.tail = (0.0, self.default_bone_len * 100.0, 0.0)
                         bone.matrix = bone_info.transform
+
                     # Update bone hierarchy
                     # for i, bone_info in enumerate(obj.bones):
                     #     bone = armature.edit_bones[i]
                     #     bone.parent = armature.edit_bones[bone_info.parent_id]
+
                     bpy.ops.object.mode_set(mode="OBJECT")
 
                 # Group position indices into triangles
@@ -397,19 +400,28 @@ class H3MReader(BinaryReader):
                 mesh.update()
 
                 mesh_obj = bpy.data.objects.new(obj.name, mesh)
-                context.collection.objects.link(mesh_obj)
                 mesh_obj.matrix_world = obj.transform
+                context.collection.objects.link(mesh_obj)
+                blender_objects.append(mesh_obj)
 
                 if is_skinned:
                     # Parent to armature and add armature modifier
                     mesh_obj.parent = armature_obj
                     modifier = mesh_obj.modifiers.new("Armature", 'ARMATURE')
                     modifier.object = armature_obj
-                else:
-                    mesh_obj.matrix_world *= self.unit_scale
+
             else:
                 # Create empty objects for non-mesh types
                 dummy_obj = bpy.data.objects.new(obj.name, None)
-                dummy_obj.empty_display_size = 0.1 / self.unit_scale
-                dummy_obj.matrix_world = obj.transform * self.unit_scale
+                dummy_obj.empty_display_size = 0.1
+                dummy_obj.matrix_world = obj.transform
                 context.collection.objects.link(dummy_obj)
+                blender_objects.append(dummy_obj)
+
+        # Update object hierarchy
+        for i, parent_id in enumerate(self.object_parent_ids):
+            if parent_id < 0:
+                # Scale down root object(s)
+                blender_objects[i].matrix_world *= 0.01
+            else:
+                blender_objects[i].parent = blender_objects[parent_id]
