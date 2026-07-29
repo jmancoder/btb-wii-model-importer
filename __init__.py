@@ -32,16 +32,23 @@ class H3MImporter(Operator, ImportHelper):
         maxlen=255,
     )
 
+    unit_scale: FloatProperty(
+        name="Unit scale",
+        description="Scale all imported objects "
+            "and transforms by this amount.",
+        default=0.01,
+    )
+
     min_bone_length: FloatProperty(
         name="Min Bone Length",
         description="Smallest bone length allowed.",
-        default=0.01,
+        default=0.1,
     )
 
     def execute(self, context: Context):
         in_path = Path(self.filepath)
         with open(in_path, "rb") as f:
-            reader = H3MReader(self.min_bone_length)
+            reader = H3MReader(self.unit_scale, self.min_bone_length)
             reader.load_h3m(f.read(), in_path.stem)
         reader.import_h3m(context)
 

@@ -39,7 +39,7 @@ class BinaryReader:
         r, g, b, a = struct.unpack(f">4B", self.bs.read(4))
         return (r / 255, g / 255, b / 255, a / 255)
 
-    def read_rotation(self) -> Quaternion:
+    def read_quaternion(self) -> Quaternion:
         return Quaternion(struct.unpack(">4f", self.bs.read(16)))
 
     def read_matrix(self):

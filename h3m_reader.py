@@ -1,10 +1,9 @@
 from __future__ import annotations
 import bpy
 from io import BytesIO
-import math
 
-from bpy.types import Context
-from mathutils import Quaternion, Matrix
+from bpy.types import Context, Object
+from mathutils import Matrix
 
 from .lzss3 import decompress_bytes
 from .binary_reader import BinaryReader
@@ -58,23 +57,36 @@ class H3MPrimitiveGroup:
                 self.indices_11.append(reader.read_uint16())
 
 
+class H3MBone:
+    def __init__(self) -> None:
+        self.parent_id: int
+        self.transform: Matrix
+
+    def load_data(self, reader: H3MReader) -> None:
+        self.parent_id = reader.read_int16()
+        self.transform = Matrix.LocRotScale(
+            reader.read_vec3f(),
+            reader.read_quaternion(),
+            reader.read_vec3f()
+        )
+
 class H3MObject:
     def __init__(self) -> None:
         self.name: str
-        self.flags_0: int
-        self.flags_1: int
-        self.location: tuple[float, float, float]
-        self.rotation: Quaternion
-        self.scale: tuple[float, float, float]
+        self.flag_0: int
+        self.flag_1: int
+        self.transform: Matrix
 
     def load_data(self, reader: H3MReader) -> None:
         # Read shared object fields
         self.name = reader.read_text()
-        self.flags_0 = reader.read_uint16()
-        self.flags_1 = reader.read_uint16()
-        self.location = reader.read_vec3f()
-        self.rotation = reader.read_rotation()
-        self.scale = reader.read_vec3f()
+        self.flag_0 = reader.read_uint16()
+        self.flag_1 = reader.read_uint16()
+        self.transform = Matrix.LocRotScale(
+            reader.read_vec3f(),
+            reader.read_quaternion(),
+            reader.read_vec3f()
+        )
 
 
 class H3MDummyObject(H3MObject):
@@ -112,7 +124,6 @@ class H3MMeshObject(H3MObject):
 
         self.main_prim_group: H3MPrimitiveGroup
         self.prim_groups: list[H3MPrimitiveGroup] = []
-        self.triangles: list[tuple[int, int, int]] = []
 
     def load_data(self, reader: H3MReader):
         super().load_data(reader)
@@ -181,41 +192,63 @@ class H3MMeshObject(H3MObject):
                 prim_group.load_data(reader)
                 self.prim_groups.append(prim_group)
 
-        reader.read_uint16()
-        reader.read_uint16()
-        unk_count = reader.read_int16()
-        tail_prim_count = reader.read_uint16()
-
         self.main_prim_group = self.prim_groups[-1]
-        if unk_count > -1:
-            print("Tail prims start:", hex(reader.bs.tell()))
-            tail_prim_group = H3MPrimitiveGroup(
-                self.main_prim_group.prim_type,
-                tail_prim_count,
-                self.main_prim_group.prim_flags
-            )
-            tail_prim_group.load_data(reader)
-            self.prim_groups.append(tail_prim_group)
-            self.main_prim_group = tail_prim_group
 
-        # Group position indices into triangles
-        for i in range(0, len(self.main_prim_group.position_indices), 3):
-            a, b, c = self.main_prim_group.position_indices[i:i+3]
-            self.triangles.append((a, b, c))
+        unk_0 = reader.read_uint16()
+        unk_1 = reader.read_uint16()
 
 
 class H3MSkinMeshObject(H3MMeshObject):
     def __init__(self) -> None:
         super().__init__()
 
+        self.skin_transform: Matrix
+        self.bones: list[H3MBone] = []
+        self.bone_indices: list[float] = []
+        self.bone_weights: list[float] = []
+
     def load_data(self, reader: H3MReader):
         super().load_data(reader)
 
+        # Read main primitive group
+        unk_0 = reader.read_int16()
+        tail_prim_count = reader.read_uint16()
+        tail_prim_group = H3MPrimitiveGroup(
+            self.main_prim_group.prim_type,
+            tail_prim_count,
+            self.main_prim_group.prim_flags
+        )
+        tail_prim_group.load_data(reader)
+        self.prim_groups.append(tail_prim_group)
+        self.main_prim_group = tail_prim_group
+
+        # Read skin data
+        self.skin_transform = Matrix.LocRotScale(
+            reader.read_vec3f(),
+            reader.read_quaternion(),
+            reader.read_vec3f()
+        )
+
+        bone_count = reader.read_uint16()
+        for _ in range(bone_count):
+            bone = H3MBone()
+            bone.load_data(reader)
+            self.bones.append(bone)
+
+        skin_attr_count = reader.read_uint16()
+        unks_0 = []
+        for _ in range(skin_attr_count):
+            unks_0.append(reader.read_int16())
+            self.bone_weights.append(reader.read_float())
+            self.bone_indices.append(reader.read_int32())
+        print("Min, max:", min(unks_0), max(unks_0))
 
 class H3MReader(BinaryReader):
-    def __init__(self, min_node_length: float) -> None:
+    def __init__(self, unit_scale: float, min_node_length: float) -> None:
+        self.unit_scale = unit_scale
         self.min_node_length = min_node_length
         self.objects: list[H3MObject] = []
+        self.parent_ids: list[int] = []
 
     def read_text(self) -> str:
         text_len = self.read_uint16()
@@ -269,7 +302,6 @@ class H3MReader(BinaryReader):
                     tex_size = self.read_uint32()
                     self.bs.seek(tex_size, 1)
                 self.read_uint16()
-
             self.read_uint16()
 
         # Read objects
@@ -284,8 +316,6 @@ class H3MReader(BinaryReader):
                     obj = H3MSkinMeshObject()
                     obj.load_data(self)
                     self.objects.append(obj)
-                    # Remove this break when SkinMesh objects are fully parsed
-                    break
                 case 3:
                     obj = H3MBoneObject()
                     obj.load_data(self)
@@ -297,45 +327,48 @@ class H3MReader(BinaryReader):
                 case _:
                     raise ValueError(f"Unknown object type: {obj_type}")
 
+        # Store object parent IDs
+        self.parent_ids = [self.read_int16() for _ in range(object_count)]
+
     def import_h3m(self, context: Context) -> None:
-        bone_objects: list[H3MBoneObject] = []
-
         for obj in self.objects:
-            if type(obj) is H3MDummyObject:
-                # Create empty object
-                dummy_obj = bpy.data.objects.new(obj.name, None)
-                dummy_obj.empty_display_size = 0.1
-                context.collection.objects.link(dummy_obj)
-
-            elif type(obj) is H3MBoneObject:
-                bone_objects.append(obj)
-
-            elif isinstance(obj, H3MMeshObject):
+            if isinstance(obj, H3MMeshObject):
                 is_skinned = type(obj) is H3MSkinMeshObject
                 if is_skinned:
                     # Create armature
                     armature = bpy.data.armatures.new(obj.name)
                     armature_obj = bpy.data.objects.new(obj.name, armature)
+                    armature_obj.matrix_world = obj.skin_transform * self.unit_scale
                     context.collection.objects.link(armature_obj)
 
                     # Create bones
                     context.view_layer.objects.active = armature_obj
                     bpy.ops.object.mode_set(mode="EDIT")
-                    for bone_obj in bone_objects:
-                        bone = armature.edit_bones.new(bone_obj.name)
-                        bone.tail = (0, 2.0, 0)
-                        bone.matrix = Matrix.LocRotScale(
-                            bone_obj.location,
-                            bone_obj.rotation,
-                            bone_obj.scale,
+                    for i, bone_info in enumerate(obj.bones):
+                        bone = armature.edit_bones.new(str(i))
+                        bone.tail = (
+                            0.0,
+                            self.min_node_length / self.unit_scale,
+                            0.0
                         )
+                        bone.matrix = bone_info.transform
+                    # Update bone hierarchy
+                    # for i, bone_info in enumerate(obj.bones):
+                    #     bone = armature.edit_bones[i]
+                    #     bone.parent = armature.edit_bones[bone_info.parent_id]
                     bpy.ops.object.mode_set(mode="OBJECT")
+
+                # Group position indices into triangles
+                triangles: list[tuple[int, int, int]] = []
+                for i in range(0, len(obj.main_prim_group.position_indices), 3):
+                    a, b, c = obj.main_prim_group.position_indices[i:i+3]
+                    triangles.append((a, b, c))
 
                 # Create mesh
                 mesh = bpy.data.meshes.new(obj.name)
-                mesh.from_pydata(obj.positions, [], obj.triangles)
+                mesh.from_pydata(obj.positions, [], triangles)
 
-                # Skinned mesh normal and UV indices are still not imported correctly
+                # Skin mesh normal and UV indices cannot be imported directly
                 if not is_skinned:
                     # Import flipped UVs
                     uv_layer = mesh.uv_layers.new(name=f"UV0")
@@ -365,17 +398,18 @@ class H3MReader(BinaryReader):
 
                 mesh_obj = bpy.data.objects.new(obj.name, mesh)
                 context.collection.objects.link(mesh_obj)
+                mesh_obj.matrix_world = obj.transform
 
                 if is_skinned:
                     # Parent to armature and add armature modifier
                     mesh_obj.parent = armature_obj
                     modifier = mesh_obj.modifiers.new("Armature", 'ARMATURE')
                     modifier.object = armature_obj
-
-                    # Correct armature scale and rotation
-                    armature_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
-                    armature_obj.scale = (0.01, 0.01, 0.01)
                 else:
-                    # Correct mesh scale and rotation
-                    mesh_obj.rotation_euler = (math.radians(90.0), 0.0, 0.0)
-                    mesh_obj.scale = (0.01, 0.01, 0.01)
+                    mesh_obj.matrix_world *= self.unit_scale
+            else:
+                # Create empty objects for non-mesh types
+                dummy_obj = bpy.data.objects.new(obj.name, None)
+                dummy_obj.empty_display_size = 0.1 / self.unit_scale
+                dummy_obj.matrix_world = obj.transform * self.unit_scale
+                context.collection.objects.link(dummy_obj)
