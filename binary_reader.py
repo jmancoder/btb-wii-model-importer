@@ -1,7 +1,8 @@
 import struct
 
 from io import BytesIO
-from mathutils import Matrix, Quaternion, Color
+from mathutils import Matrix, Quaternion
+
 
 class BinaryReader:
     def __init__(self) -> None:
@@ -10,7 +11,7 @@ class BinaryReader:
 
     def read_uint8(self) -> int:
         return int.from_bytes(self.bs.read(1), signed=False)
-    
+
     def read_int8(self) -> int:
         return int.from_bytes(self.bs.read(1), signed=True)
 
@@ -44,9 +45,11 @@ class BinaryReader:
 
     def read_matrix(self):
         floats = struct.unpack(">16f", self.bs.read(64))
-        return Matrix((
-            floats[0:4],
-            floats[4:8],
-            floats[8:12],
-            floats[12:16],
-        )).transposed()
+        return Matrix(
+            (
+                floats[0:4],
+                floats[4:8],
+                floats[8:12],
+                floats[12:16],
+            )
+        ).transposed()

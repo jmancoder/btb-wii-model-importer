@@ -10,8 +10,7 @@ from .binary_reader import BinaryReader
 
 
 class H3MPrimitiveGroup:
-    def __init__(self, prim_type: int, prim_count: int,
-                 prim_flags: int) -> None:
+    def __init__(self, prim_type: int, prim_count: int, prim_flags: int) -> None:
         self.prim_type = prim_type
         self.prim_count = prim_count
         self.prim_flags = prim_flags
@@ -59,15 +58,13 @@ class H3MPrimitiveGroup:
 
 class H3MBone:
     def __init__(self) -> None:
-        self.parent_id: int
+        self.object_id: int
         self.transform: Matrix
 
     def load_data(self, reader: H3MReader) -> None:
-        self.parent_id = reader.read_int16()
+        self.object_id = reader.read_int16()
         self.transform = Matrix.LocRotScale(
-            reader.read_vec3f(),
-            reader.read_quaternion(),
-            reader.read_vec3f()
+            reader.read_vec3f(), reader.read_quaternion(), reader.read_vec3f()
         )
 
 
@@ -77,6 +74,7 @@ class H3MObject:
         self.flag_0: int
         self.flag_1: int
         self.transform: Matrix
+        self.parent_id: int = -1
 
     def load_data(self, reader: H3MReader) -> None:
         # Read shared object fields
@@ -84,9 +82,7 @@ class H3MObject:
         self.flag_0 = reader.read_uint16()
         self.flag_1 = reader.read_uint16()
         self.transform = Matrix.LocRotScale(
-            reader.read_vec3f(),
-            reader.read_quaternion(),
-            reader.read_vec3f()
+            reader.read_vec3f(), reader.read_quaternion(), reader.read_vec3f()
         )
 
 
@@ -130,54 +126,18 @@ class H3MMeshObject(H3MObject):
         super().load_data(reader)
 
         # Read vertex attribute buffers
-        self.positions = [
-            reader.read_vec3f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.normals = [
-            reader.read_vec3f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.colors = [
-            reader.read_rgba()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_3 = [
-            reader.read_float()
-            for _ in range(reader.read_uint16())
-        ]
-        self.uvs = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_5 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_6 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_7 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_8 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_9 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_10 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
-        self.attrs_11 = [
-            reader.read_vec2f()
-            for _ in range(reader.read_uint16())
-        ]
+        self.positions = [reader.read_vec3f() for _ in range(reader.read_uint16())]
+        self.normals = [reader.read_vec3f() for _ in range(reader.read_uint16())]
+        self.colors = [reader.read_rgba() for _ in range(reader.read_uint16())]
+        self.attrs_3 = [reader.read_float() for _ in range(reader.read_uint16())]
+        self.uvs = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_5 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_6 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_7 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_8 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_9 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_10 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
+        self.attrs_11 = [reader.read_vec2f() for _ in range(reader.read_uint16())]
 
         # Read nodes and primitive groups
         node_count = reader.read_uint16()
@@ -188,8 +148,7 @@ class H3MMeshObject(H3MObject):
                 prim_type = reader.read_uint16()
                 prim_count = reader.read_uint32()
                 prim_flags = reader.read_uint32()
-                prim_group = H3MPrimitiveGroup(prim_type,
-                                               prim_count, prim_flags)
+                prim_group = H3MPrimitiveGroup(prim_type, prim_count, prim_flags)
                 prim_group.load_data(reader)
                 self.prim_groups.append(prim_group)
 
@@ -217,7 +176,7 @@ class H3MSkinMeshObject(H3MMeshObject):
         tail_prim_group = H3MPrimitiveGroup(
             self.main_prim_group.prim_type,
             tail_prim_count,
-            self.main_prim_group.prim_flags
+            self.main_prim_group.prim_flags,
         )
         tail_prim_group.load_data(reader)
         self.prim_groups.append(tail_prim_group)
@@ -225,19 +184,14 @@ class H3MSkinMeshObject(H3MMeshObject):
 
         # Read skin data
         self.skin_transform = Matrix.LocRotScale(
-            reader.read_vec3f(),
-            reader.read_quaternion(),
-            reader.read_vec3f()
+            reader.read_vec3f(), reader.read_quaternion(), reader.read_vec3f()
         )
 
-        pids = []
         bone_count = reader.read_uint16()
         for _ in range(bone_count):
             bone = H3MBone()
             bone.load_data(reader)
             self.bones.append(bone)
-            pids.append(bone.parent_id)
-        print("Min-max:", min(pids), max(pids))
 
         skin_attr_count = reader.read_uint16()
         for _ in range(skin_attr_count):
@@ -250,7 +204,6 @@ class H3MReader(BinaryReader):
     def __init__(self, default_bone_len: float) -> None:
         self.default_bone_len = default_bone_len
         self.objects: list[H3MObject] = []
-        self.parent_ids: list[int] = []
 
     def read_text(self) -> str:
         text_len = self.read_uint16()
@@ -271,15 +224,13 @@ class H3MReader(BinaryReader):
             data = z_data
         self.data_size = len(data)
         if self.data_size == 0:
-            raise ValueError(
-                f"Decompressed data is empty")
+            raise ValueError(f"Decompressed data is empty")
         self.bs = BytesIO(data)
 
         # Read header
         version = self.read_uint16()
         if version != 200:
-            raise ValueError(
-                f"Unknown file version {version}")
+            raise ValueError(f"Unknown file version {version}")
         material_count = self.read_uint16()
         object_count = self.read_uint16()
         anim_count = self.read_uint16()
@@ -330,7 +281,8 @@ class H3MReader(BinaryReader):
                     raise ValueError(f"Unknown object type: {obj_type}")
 
         # Store object parent IDs
-        self.object_parent_ids = [self.read_int16() for _ in range(object_count)]
+        for obj in self.objects:
+            obj.parent_id = self.read_int16()
 
     def import_h3m(self, context: Context) -> None:
         blender_objects: list[Object] = []
@@ -338,33 +290,41 @@ class H3MReader(BinaryReader):
             if isinstance(obj, H3MMeshObject):
                 is_skinned = type(obj) is H3MSkinMeshObject
                 if is_skinned:
-                    # Create armature
+                    # Create armature object
                     armature = bpy.data.armatures.new(obj.name)
                     armature_obj = bpy.data.objects.new(obj.name, armature)
-                    armature_obj.matrix_world = obj.skin_transform
                     context.collection.objects.link(armature_obj)
+                    if obj.parent_id > -1:
+                        armature_obj.parent = blender_objects[obj.parent_id]
                     blender_objects.append(armature_obj)
+                    armature_obj.matrix_local = obj.transform
+                    if obj.parent_id < 0:
+                        armature_obj.matrix_world *= 0.01
 
-                    # Create bones
                     context.view_layer.objects.active = armature_obj
                     bpy.ops.object.mode_set(mode="EDIT")
 
+                    # Create bones
                     for i, bone_info in enumerate(obj.bones):
-                        bone = armature.edit_bones.new(str(i))
+                        bone_obj = blender_objects[bone_info.object_id]
+                        bone = armature.edit_bones.new(bone_obj.name)
                         bone.tail = (0.0, self.default_bone_len * 100.0, 0.0)
                         bone.matrix = bone_info.transform
 
-                    # Update bone hierarchy
-                    # for i, bone_info in enumerate(obj.bones):
-                    #     bone = armature.edit_bones[i]
-                    #     bone.parent = armature.edit_bones[bone_info.parent_id]
+                    # Make bone hierarchy match bone object hierarchy
+                    for i, bone_info in enumerate(obj.bones):
+                        bone_obj = blender_objects[bone_info.object_id]
+                        parent_bone_obj = bone_obj.parent
+                        if parent_bone_obj:
+                            bone = armature.edit_bones[i]
+                            bone.parent = armature.edit_bones.get(parent_bone_obj.name)
 
                     bpy.ops.object.mode_set(mode="OBJECT")
 
                 # Group position indices into triangles
                 triangles: list[tuple[int, int, int]] = []
                 for i in range(0, len(obj.main_prim_group.position_indices), 3):
-                    a, b, c = obj.main_prim_group.position_indices[i:i+3]
+                    a, b, c = obj.main_prim_group.position_indices[i : i + 3]
                     triangles.append((a, b, c))
 
                 # Create mesh
@@ -399,29 +359,30 @@ class H3MReader(BinaryReader):
                 mesh.validate()
                 mesh.update()
 
+                # Create mesh object
                 mesh_obj = bpy.data.objects.new(obj.name, mesh)
-                mesh_obj.matrix_world = obj.transform
                 context.collection.objects.link(mesh_obj)
+                if obj.parent_id > -1:
+                    mesh_obj.parent = blender_objects[obj.parent_id]
                 blender_objects.append(mesh_obj)
+                mesh_obj.matrix_local = obj.transform
+                if obj.parent_id < 0:
+                    mesh_obj.matrix_world *= 0.01
 
                 if is_skinned:
                     # Parent to armature and add armature modifier
                     mesh_obj.parent = armature_obj
-                    modifier = mesh_obj.modifiers.new("Armature", 'ARMATURE')
+                    modifier = mesh_obj.modifiers.new("Armature", "ARMATURE")
                     modifier.object = armature_obj
 
             else:
                 # Create empty objects for non-mesh types
                 dummy_obj = bpy.data.objects.new(obj.name, None)
                 dummy_obj.empty_display_size = 0.1
-                dummy_obj.matrix_world = obj.transform
                 context.collection.objects.link(dummy_obj)
+                if obj.parent_id > -1:
+                    dummy_obj.parent = blender_objects[obj.parent_id]
                 blender_objects.append(dummy_obj)
-
-        # Update object hierarchy
-        for i, parent_id in enumerate(self.object_parent_ids):
-            if parent_id < 0:
-                # Scale down root object(s)
-                blender_objects[i].matrix_world *= 0.01
-            else:
-                blender_objects[i].parent = blender_objects[parent_id]
+                dummy_obj.matrix_local = obj.transform
+                if obj.parent_id < 0:
+                    dummy_obj.matrix_world *= 0.01

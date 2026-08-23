@@ -21,6 +21,7 @@ from .h3m_reader import H3MReader
 
 class H3MImporter(Operator, ImportHelper):
     """Load an H3M model from Bob the Builder Wii."""
+
     bl_idname = "import_scene.btb_h3m_model"
     bl_label = "Import H3M"
 
@@ -28,14 +29,14 @@ class H3MImporter(Operator, ImportHelper):
 
     filter_glob: StringProperty(
         default="*.h3m",
-        options={'HIDDEN'},
+        options={"HIDDEN"},
         maxlen=255,
     )
 
     default_bone_len: FloatProperty(
         name="Default bone length",
         description="Length used for bones where the "
-            "parent distance cannot be calculated.",
+        "parent distance cannot be calculated.",
         default=0.05,
     )
 
@@ -46,14 +47,11 @@ class H3MImporter(Operator, ImportHelper):
             reader.load_h3m(f.read(), in_path.stem)
         reader.import_h3m(context)
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 def menu_func_import(self, context):
-    self.layout.operator(
-        H3MImporter.bl_idname,
-        text="H3M Model (.H3M)"
-    )
+    self.layout.operator(H3MImporter.bl_idname, text="H3M Model (.H3M)")
 
 
 def register():
