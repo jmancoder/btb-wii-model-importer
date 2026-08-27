@@ -1,55 +1,73 @@
-import struct
-
 from io import BytesIO
-from mathutils import Matrix, Quaternion
+import struct
+from typing import Literal
+
+from mathutils import Matrix
 
 
-class BinaryReader:
-    def __init__(self) -> None:
-        self.bs: BytesIO
-        self.data_size: int = 0
+class BinaryReader(BytesIO):
+    def __init__(self, data: bytes | bytearray, big_endian=False) -> None:
+        super().__init__(data)
+
+        self.endian_symbol: Literal["<", ">"]
+        self.byte_order: Literal["little", "big"]
+        if big_endian:
+            self.endian_symbol = ">"
+            self.byte_order = "big"
+        else:
+            self.endian_symbol = "<"
+            self.byte_order = "little"
 
     def read_uint8(self) -> int:
-        return int.from_bytes(self.bs.read(1), signed=False)
+        return int.from_bytes(self.read(1), signed=False, byteorder=self.byte_order)
 
     def read_int8(self) -> int:
-        return int.from_bytes(self.bs.read(1), signed=True)
+        return int.from_bytes(self.read(1), signed=True, byteorder=self.byte_order)
 
     def read_uint16(self) -> int:
-        return int.from_bytes(self.bs.read(2), signed=False)
+        return int.from_bytes(self.read(2), signed=False, byteorder=self.byte_order)
 
     def read_int16(self) -> int:
-        return int.from_bytes(self.bs.read(2), signed=True)
+        return int.from_bytes(self.read(2), signed=True, byteorder=self.byte_order)
 
     def read_uint32(self) -> int:
-        return int.from_bytes(self.bs.read(4), signed=False)
+        return int.from_bytes(self.read(4), signed=False, byteorder=self.byte_order)
 
     def read_int32(self) -> int:
-        return int.from_bytes(self.bs.read(4), signed=True)
+        return int.from_bytes(self.read(4), signed=True, byteorder=self.byte_order)
+
+    def read_vec4B(self) -> tuple[int, int, int, int]:
+        return struct.unpack(self.endian_symbol + "4B", self.read(4))
+
+    def read_vec3H(self) -> tuple[int, int, int]:
+        return struct.unpack(self.endian_symbol + "3H", self.read(6))
+
+    def read_vec3I(self) -> tuple[int, int, int]:
+        return struct.unpack(self.endian_symbol + "3I", self.read(12))
 
     def read_float(self) -> float:
-        return struct.unpack(">f", self.bs.read(4))[0]
+        return struct.unpack(self.endian_symbol + "f", self.read(4))[0]
 
     def read_vec2f(self) -> tuple[float, float]:
-        return struct.unpack(f">2f", self.bs.read(8))
+        return struct.unpack(self.endian_symbol + "2f", self.read(8))
 
     def read_vec3f(self) -> tuple[float, float, float]:
-        return struct.unpack(f">3f", self.bs.read(12))
+        return struct.unpack(self.endian_symbol + "3f", self.read(12))
 
-    def read_rgba(self) -> tuple[float, float, float, float]:
-        r, g, b, a = struct.unpack(f">4B", self.bs.read(4))
-        return (r / 255, g / 255, b / 255, a / 255)
+    def read_vec4f(self) -> tuple[float, float, float, float]:
+        return struct.unpack(self.endian_symbol + "4f", self.read(16))
 
-    def read_quaternion(self) -> Quaternion:
-        return Quaternion(struct.unpack(">4f", self.bs.read(16)))
+    def read_string(self) -> str:
+        text_len = self.read_uint16()
+        if text_len == 0:
+            return ""
 
-    def read_matrix(self):
-        floats = struct.unpack(">16f", self.bs.read(64))
-        return Matrix(
-            (
-                floats[0:4],
-                floats[4:8],
-                floats[8:12],
-                floats[12:16],
-            )
-        ).transposed()
+        # Exclude null end byte
+        text = self.read(text_len - 1).decode()
+        self.read(1)
+
+        return text
+
+    def read_matrix_3x4(self) -> Matrix:
+        rows = [self.read_vec4f() for _ in range(3)]
+        return Matrix(rows).to_4x4()

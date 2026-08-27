@@ -16,7 +16,7 @@ from bpy_extras.io_utils import ImportHelper
 from bpy.props import FloatProperty, StringProperty
 from bpy.types import Operator, Context
 
-from .h3m_reader import H3MReader
+from . import h3m_reader
 
 
 class H3MImporter(Operator, ImportHelper):
@@ -43,9 +43,8 @@ class H3MImporter(Operator, ImportHelper):
     def execute(self, context: Context):
         in_path = Path(self.filepath)
         with open(in_path, "rb") as f:
-            reader = H3MReader(self.default_bone_len)
-            reader.load_h3m(f.read(), in_path.stem)
-        reader.import_h3m(context)
+            objects = h3m_reader.read_h3m(f)
+        h3m_reader.import_h3m(context, objects, in_path.stem, self.default_bone_len)
 
         return {"FINISHED"}
 
