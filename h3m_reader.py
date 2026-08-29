@@ -108,36 +108,81 @@ class H3MMeshObject(H3MObject):
     def __init__(self) -> None:
         super().__init__()
 
-        self.positions: list[tuple[float, float, float]] = []
-        self.normals: list[tuple[float, float, float]] = []
-        self.colors: list[tuple[float, float, float, float]] = []
-        self.attrs_3: list[float] = []
-        self.uvs: list[tuple[float, float]] = []
-        self.attrs_5: list[tuple[float, float]] = []
-        self.attrs_6: list[tuple[float, float]] = []
-        self.attrs_7: list[tuple[float, float]] = []
-        self.attrs_8: list[tuple[float, float]] = []
-        self.attrs_9: list[tuple[float, float]] = []
-        self.attrs_10: list[tuple[float, float]] = []
-        self.attrs_11: list[tuple[float, float]] = []
+        self.positions: npt.NDArray
+        self.normals: npt.NDArray
+        self.colors: npt.NDArray
+        self.attrs_3: npt.NDArray
+        self.uvs: npt.NDArray
+        self.attrs_5: npt.NDArray
+        self.attrs_6: npt.NDArray
+        self.attrs_7: npt.NDArray
+        self.attrs_8: npt.NDArray
+        self.attrs_9: npt.NDArray
+        self.attrs_10: npt.NDArray
+        self.attrs_11: npt.NDArray
         self.prim_groups: list[H3MPrimitiveGroup] = []
 
     def load_data(self, bs: BinaryReader):
         super().load_data(bs)
 
         # Read vertex attribute buffers
-        self.positions = [bs.read_vec3f() for _ in range(bs.read_uint16())]
-        self.normals = [bs.read_vec3f() for _ in range(bs.read_uint16())]
-        self.colors = [bs.read_vec4B() for _ in range(bs.read_uint16())]
-        self.attrs_3 = [bs.read_float() for _ in range(bs.read_uint16())]
-        self.uvs = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_5 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_6 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_7 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_8 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_9 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_10 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
-        self.attrs_11 = [bs.read_vec2f() for _ in range(bs.read_uint16())]
+        self.positions = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 3, bs.tell()
+        ).reshape(-1, 3)
+        bs.seek(self.positions.nbytes, 1)
+
+        self.normals = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 3, bs.tell()
+        ).reshape(-1, 3)
+        bs.seek(self.normals.nbytes, 1)
+
+        self.colors = np.frombuffer(
+            bs.getbuffer(), ">u1", bs.read_uint16() * 4, bs.tell()
+        ).reshape(-1, 4)
+        bs.seek(self.colors.nbytes, 1)
+
+        self.attrs_3 = np.frombuffer(bs.getbuffer(), ">f4", bs.read_uint16(), bs.tell())
+        bs.seek(self.attrs_3.nbytes, 1)
+
+        self.uvs = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.uvs.nbytes, 1)
+
+        self.attrs_5 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_5.nbytes, 1)
+
+        self.attrs_6 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_6.nbytes, 1)
+
+        self.attrs_7 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_7.nbytes, 1)
+
+        self.attrs_8 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_8.nbytes, 1)
+
+        self.attrs_9 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_9.nbytes, 1)
+
+        self.attrs_10 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_10.nbytes, 1)
+
+        self.attrs_11 = np.frombuffer(
+            bs.getbuffer(), ">f4", bs.read_uint16() * 2, bs.tell()
+        ).reshape(-1, 2)
+        bs.seek(self.attrs_11.nbytes, 1)
 
         # Read nodes and primitive groups
         node_count = bs.read_uint16()
