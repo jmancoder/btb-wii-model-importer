@@ -4,56 +4,58 @@ from io import BufferedReader
 
 from bpy.types import Context, Object
 from mathutils import Matrix, Quaternion
+import numpy as np
+import numpy.typing as npt
 
 from .lzss3 import decompress_bytes
 from .binary_reader import BinaryReader
 
 
 class H3MPrimitiveGroup:
-    def __init__(self, prim_type: int, prim_count: int, prim_flags: int) -> None:
+    def __init__(
+        self, prim_type: int, prim_count: int, prim_flags: int, is_extra: bool = False
+    ) -> None:
         self.prim_type = prim_type
         self.prim_count = prim_count
         self.prim_flags = prim_flags
+        self.is_extra = is_extra
 
-        self.position_indices: list[int] = []
-        self.normal_indices: list[int] = []
-        self.color_indices: list[int] = []
-        self.indices_3: list[int] = []
-        self.uv_indices: list[int] = []
-        self.indices_5: list[int] = []
-        self.indices_6: list[int] = []
-        self.indices_7: list[int] = []
-        self.indices_8: list[int] = []
-        self.indices_9: list[int] = []
-        self.indices_10: list[int] = []
-        self.indices_11: list[int] = []
+        self.indices: npt.NDArray
 
     def load_data(self, bs: BinaryReader) -> None:
-        for _ in range(self.prim_count):
-            if self.prim_flags & 1:
-                self.position_indices.append(bs.read_uint16())
-            if self.prim_flags & 2:
-                self.normal_indices.append(bs.read_uint16())
-            if self.prim_flags & 4:
-                self.color_indices.append(bs.read_uint16())
-            if self.prim_flags & 8:
-                self.indices_3.append(bs.read_uint16())
-            if self.prim_flags & 16:
-                self.uv_indices.append(bs.read_uint16())
-            if self.prim_flags & 32:
-                self.indices_5.append(bs.read_uint16())
-            if self.prim_flags & 64:
-                self.indices_6.append(bs.read_uint16())
-            if self.prim_flags & 128:
-                self.indices_7.append(bs.read_uint16())
-            if self.prim_flags & 256:
-                self.indices_8.append(bs.read_uint16())
-            if self.prim_flags & 512:
-                self.indices_9.append(bs.read_uint16())
-            if self.prim_flags & 1024:
-                self.indices_10.append(bs.read_uint16())
-            if self.prim_flags & 2048:
-                self.indices_11.append(bs.read_uint16())
+        dtype_fields = []
+        if self.prim_flags & 1:
+            dtype_fields.append(("position", ">u2", 1))
+        if self.is_extra:
+            dtype_fields.append(("extra", ">u2", 1))
+        if self.prim_flags & 2:
+            dtype_fields.append(("normal", ">u2", 1))
+        if self.prim_flags & 4:
+            dtype_fields.append(("color", ">u2", 1))
+        if self.prim_flags & 8:
+            dtype_fields.append(("index_3", ">u2", 1))
+        if self.prim_flags & 16:
+            dtype_fields.append(("uv", ">u2", 1))
+        if self.prim_flags & 32:
+            dtype_fields.append(("index_5", ">u2", 1))
+        if self.prim_flags & 64:
+            dtype_fields.append(("index_6", ">u2", 1))
+        if self.prim_flags & 128:
+            dtype_fields.append(("index_7", ">u2", 1))
+        if self.prim_flags & 256:
+            dtype_fields.append(("index_8", ">u2", 1))
+        if self.prim_flags & 512:
+            dtype_fields.append(("index_9", ">u2", 1))
+        if self.prim_flags & 1024:
+            dtype_fields.append(("index_10", ">u2", 1))
+        if self.prim_flags & 2048:
+            dtype_fields.append(("index_11", ">u2", 1))
+
+        prim_dtype = np.dtype(dtype_fields)
+        self.indices = np.frombuffer(
+            bs.getbuffer(), prim_dtype, self.prim_count, bs.tell()
+        )
+        bs.seek(self.indices.nbytes, 1)
 
 
 class H3MBone:
@@ -118,8 +120,6 @@ class H3MMeshObject(H3MObject):
         self.attrs_9: list[tuple[float, float]] = []
         self.attrs_10: list[tuple[float, float]] = []
         self.attrs_11: list[tuple[float, float]] = []
-
-        self.main_prim_group: H3MPrimitiveGroup
         self.prim_groups: list[H3MPrimitiveGroup] = []
 
     def load_data(self, bs: BinaryReader):
@@ -152,8 +152,6 @@ class H3MMeshObject(H3MObject):
                 prim_group.load_data(bs)
                 self.prim_groups.append(prim_group)
 
-        self.main_prim_group = self.prim_groups[-1]
-
         unk_0 = bs.read_uint16()
         unk_1 = bs.read_uint16()
 
@@ -163,6 +161,7 @@ class H3MSkinMeshObject(H3MMeshObject):
         super().__init__()
 
         self.skin_transform: Matrix
+        self.extra_prim_group: H3MPrimitiveGroup
         self.bones: list[H3MBone] = []
         self.bone_indices: list[float] = []
         self.bone_weights: list[float] = []
@@ -170,17 +169,14 @@ class H3MSkinMeshObject(H3MMeshObject):
     def load_data(self, bs: BinaryReader):
         super().load_data(bs)
 
-        # Read main primitive group
+        # Read extra primitive group
         unk_0 = bs.read_int16()
-        tail_prim_count = bs.read_uint16()
-        tail_prim_group = H3MPrimitiveGroup(
-            self.main_prim_group.prim_type,
-            tail_prim_count,
-            self.main_prim_group.prim_flags,
+        extra_prim_count = bs.read_uint16()
+        last_prim_group = self.prim_groups[-1]
+        self.extra_prim_group = H3MPrimitiveGroup(
+            last_prim_group.prim_type, extra_prim_count, 3, True
         )
-        tail_prim_group.load_data(bs)
-        self.prim_groups.append(tail_prim_group)
-        self.main_prim_group = tail_prim_group
+        self.extra_prim_group.load_data(bs)
 
         # Read skin data
         self.skin_transform = Matrix.LocRotScale(
@@ -307,43 +303,50 @@ def import_h3m(
 
                 bpy.ops.object.mode_set(mode="OBJECT")
 
-            # Group position indices into triangles
-            triangles: list[tuple[int, int, int]] = []
-            for i in range(0, len(obj.main_prim_group.position_indices), 3):
-                a, b, c = obj.main_prim_group.position_indices[i : i + 3]
-                triangles.append((a, b, c))
+            # Combine primitive group indices
+            if is_skinned:
+                triangles = obj.extra_prim_group.indices["position"].reshape(-1, 3)
+                normal_indices = obj.extra_prim_group.indices["normal"]
+                uv_indices = np.array([])
+            else:
+                triangles = np.concatenate(
+                    [prim_group.indices["position"] for prim_group in obj.prim_groups]
+                ).reshape(-1, 3)
+                normal_indices = np.concatenate(
+                    [prim_group.indices["normal"] for prim_group in obj.prim_groups]
+                )
+                uv_indices = np.concatenate(
+                    [prim_group.indices["uv"] for prim_group in obj.prim_groups]
+                )
 
             # Create mesh
             mesh = bpy.data.meshes.new(obj.name)
             mesh.from_pydata(obj.positions, [], triangles)
-
-            # Skin mesh normal and UV indices cannot be imported directly
-            if not is_skinned:
-                # Import flipped UVs
-                uv_layer = mesh.uv_layers.new(name=f"UV0")
-                for i, uv_idx in enumerate(obj.main_prim_group.uv_indices):
-                    if uv_idx > len(obj.uvs):
-                        print(f"Warning: UV index {i} exceeded buffer length")
-                        break
-                    uv = obj.uvs[uv_idx]
-                    uv_layer.data[i].uv = (uv[0], 1.0 - uv[1])
-
-                # Import normals
-                loop_normals: list[tuple[float, float, float]] = []
-                for i, normal_idx in enumerate(obj.main_prim_group.normal_indices):
-                    if normal_idx > len(obj.normals):
-                        print(f"Warning: Normal index {i} exceeded buffer length")
-                        break
-                    x, y, z = obj.normals[normal_idx]
-                    loop_normals.append((-x, -y, -z))
-                else:
-                    if len(loop_normals) == len(mesh.loops):
-                        mesh.normals_split_custom_set(loop_normals)
-                    else:
-                        print("Warning: Normal count does not match loop count")
-
             mesh.validate()
             mesh.update()
+
+            # Import normals
+            loop_normals: list[tuple[float, float, float]] = []
+            for i, normal_idx in enumerate(normal_indices):
+                if normal_idx >= len(obj.normals):
+                    print(f"Warning: Normal index {i} exceeded buffer length")
+                    break
+                x, y, z = obj.normals[int(normal_idx)]
+                loop_normals.append((-x, -y, -z))
+            else:
+                if len(loop_normals) == len(mesh.loops):
+                    mesh.normals_split_custom_set(loop_normals)
+                else:
+                    print("Warning: Normal count does not match loop count")
+
+            # Import flipped UVs
+            uv_layer = mesh.uv_layers.new()
+            for i, uv_idx in enumerate(uv_indices):
+                if uv_idx >= len(obj.uvs):
+                    print(f"Warning: UV index {uv_idx}, {i} exceeded buffer length")
+                    break
+                uv = obj.uvs[int(uv_idx)]
+                uv_layer.data[i].uv = (uv[0], 1.0 - uv[1])
 
             # Create mesh object
             mesh_obj = bpy.data.objects.new(obj.name, mesh)
